@@ -1,0 +1,62 @@
+# JANUS orchestrator — live (MQTT) configuration for the EVerest SiL.
+
+broker:
+  host: localhost              # mosquitto container publishes 1883 on the host
+  port: 1883
+
+# EVerest module ids per power-path context (config-sil-janus-2ctx[-bpt].yaml).
+contexts:
+  AC:
+    evse_manager: ac_evse_manager
+    v2g_key: ac_v2g_key
+    ev_manager: ac_ev_manager
+  DC_BPT:
+    evse_manager: dc_evse_manager
+    v2g_key: dc_v2g_key
+    ev_manager: dc_ev_manager
+    hlc: dc_hlc                # publishes display_parameters.present_soc
+
+topics:                        # orchestrator's own namespace
+  prices: janus/prices/forecast
+  user: janus/user/settings            # retained
+  clock: janus/clock                   # retained, decision-time clock
+  state: janus/orchestrator/state      # retained
+  decision: janus/orchestrator/decision
+  switch_log: janus/orchestrator/switch_log
+  responder: janus/ev_responder/event
+  plant_meter: janus/plant/meter       # decision-time energy meter (battery model)
+  plant_step: janus/plant/step
+
+clock:
+  sim_start: "2026-01-11T18:00"    # decision time at plug-in (NEM time)
+  wall_seconds_per_cycle: 10       # one 5-min decision cycle every N wall seconds
+  start_on_state: Charging         # sim clock starts when the AC session reaches this state
+
+orchestrator:
+  preset: Naive
+  data: synthetic_spike            # real | synthetic_spike (orchestrator/scenarios/synthetic_spike)
+  initial_mode: AC
+  log_dir: live_logs               # relative to orchestrator/
+  meter_source: plant              # plant (battery model, compressed clock) | everest (SiL powermeters)
+
+guard:                             # a switch command is sent only if ALL hold
+  allowed_states: [Charging, ChargingPausedEV, ChargingPausedEVSE]
+  max_state_age_s: 5               # session_info of the active context must be this fresh
+  switch_timeout_s: 120            # an open switch older than this is reported, never auto-cleared
+
+ev_responder:                      # SiL stand-in for the car's own behaviour
+  delay_s: 0.0                     # artificial delay before starting the new session
+  initial_mode: AC                 # session started at plug-in
+  programs:                        # EvManager execute_charging_session programs
+    # An EvManager program that runs out of commands resets (unplugs) the car, so
+    # AC ends in a long blocking sleep; DC blocks on iso_wait_v2g_session_stopped.
+    AC: "sleep 1;iec_wait_pwr_ready;sleep 1;draw_power_regulated 16,3;sleep 86400"
+    DC_BPT: "sleep 1;iso_wait_slac_matched;iso_start_v2g_session DC;iso_wait_pwr_ready;iso_dc_power_on;iso_wait_v2g_session_stopped;unplug"
+  leave_program: "unplug"          # sent to the car of the context being left
+  connector_ids: {AC: 1, DC_BPT: 2}
+  soc_push_tail:                   # appended after set_soc so the modified program keeps blocking
+    AC: "sleep 86400"
+    DC_BPT: "iso_wait_v2g_session_stopped;unplug"  # EvManager connector_id (everest_external/nodered/<id>/carsim/...)
+  plant:
+    enabled: true                  # decision-time battery model (live/plant.py)
+    data: real                     # dispatch prices for the cashflow: real | synthetic_spike

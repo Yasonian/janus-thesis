@@ -1,0 +1,34 @@
+# JANUS orchestrator — decision layer (greedy planner) configuration.
+# Prices $/MWh internally; costs $/kWh; powers kW; SoC in %.
+
+battery:
+  capacity_kwh: 60
+  min_soc_pct: 20
+  target_soc_pct: 80
+  export_power_kw: 10
+  ac_charge_power_kw: 7.4
+  dc_charge_power_kw: 50
+  efficiency_eta: 0.90            # applied once, on charging: grid kWh = battery kWh / eta
+  degradation_cost_per_kwh: 0.02  # $/kWh exported (placeholder)
+
+planner:
+  slot_minutes: 5
+  export_buffer_pct: 5            # step a: exports only use SoC above min_soc + buffer
+  minimum_margin_per_mwh: 6       # export only if sell - buy/eta - degradation*1000 > this (all presets)
+  departure_margin_minutes: 10    # departure guarantee starts this much earlier
+
+mode:
+  dwell_time_minutes: 15
+  switch_ac_to_dc_s: 10           # informational downtime
+  switch_dc_to_ac_s: 15
+
+presets:                          # error-distribution quantiles; Naive = raw forecast
+  Naive: null
+  A: {sell: q50, buy: q50}
+  B: {sell: q25, buy: q75}
+  C: {sell: q10, buy: q90}
+
+session:
+  session_start: "18:00"          # evening plug-in
+  departure: "07:00"              # next morning
+  initial_soc_pct: 60             # entered by the user at plug-in (AC: no SoC reading)

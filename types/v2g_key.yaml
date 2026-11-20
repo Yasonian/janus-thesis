@@ -1,0 +1,100 @@
+description: Types for the V2G-Key hardware interposer simulation (VirtualV2GKey)
+types:
+  PowerPathMode:
+    description: Power path (source) managed by the V2G-Key interposer
+    type: string
+    enum:
+      - AC
+      - DC_BPT
+
+  TransitionStep:
+    description: >-
+      One of the four explicit steps in the IEC 61851 transition sequence
+      performed by the V2G-Key during a power-path switch.
+    type: string
+    enum:
+      - STEP1_ENDING_HLC_SESSION
+      - STEP2_CP_RETURNING_B1
+      - STEP3_SWITCHING_SOURCE
+      - STEP4_ADVERTISING_NEW_SOURCE
+
+  CPState:
+    description: IEC 61851-1 Control Pilot state as seen by the vehicle
+    type: string
+    enum:
+      - A
+      - B1
+      - B2
+      - C
+      - E
+
+  V2GKeyStatus:
+    description: Snapshot of current V2G-Key hardware state
+    type: object
+    additionalProperties: false
+    required:
+      - current_mode
+      - cp_state
+      - pp_present
+      - transition_active
+    properties:
+      current_mode:
+        description: Active power path mode
+        type: string
+        enum:
+          - AC
+          - DC_BPT
+      cp_state:
+        description: IEC 61851-1 Control Pilot state as seen by the vehicle
+        type: string
+        enum:
+          - A
+          - B1
+          - B2
+          - C
+          - E
+      pp_present:
+        description: >-
+          Proximity Pilot presence indicator. Always true unless hardware
+          has faulted — the vehicle never perceives an unplug during switching.
+        type: boolean
+      transition_active:
+        description: True if a mode transition is currently in progress
+        type: boolean
+      active_step:
+        description: Current transition step, populated only when transition_active is true
+        type: string
+        enum:
+          - STEP1_ENDING_HLC_SESSION
+          - STEP2_CP_RETURNING_B1
+          - STEP3_SWITCHING_SOURCE
+          - STEP4_ADVERTISING_NEW_SOURCE
+
+  SwitchEvent:
+    description: >-
+      Payload published at the start (switch_in_progress) and end
+      (switch_complete) of a power-path transition.
+    type: object
+    additionalProperties: false
+    required:
+      - from_mode
+      - to_mode
+    properties:
+      from_mode:
+        description: Source power path mode
+        type: string
+        enum:
+          - AC
+          - DC_BPT
+      to_mode:
+        description: Target power path mode
+        type: string
+        enum:
+          - AC
+          - DC_BPT
+      elapsed_ms:
+        description: Total elapsed time in milliseconds; populated only in switch_complete
+        type: integer
+      success:
+        description: Whether the switch completed successfully; populated only in switch_complete
+        type: boolean

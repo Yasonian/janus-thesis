@@ -1,0 +1,345 @@
+# config-sil-janus-2ctx.yaml
+#
+# JANUS two-context SiL config: ONE manager running an AC/ISO15118-2 context
+# (EvseV2G) AND a DC-BPT/ISO15118-20 context (Evse15118D20) concurrently, plus
+# the VirtualV2GKey interposer stand-in for driving an AC->DC-BPT handover.
+#
+# Built by merging config-sil-v2gkey.yaml (AC context) and config-sil-dc-d20.yaml
+# (DC-BPT context). Module ids are prefixed ac_/dc_ to avoid collisions; the two
+# contexts use distinct connector_id (1/2), evse_id (*1/*2), and separate
+# YetiSimulator + SlacSimulator + PyEvJosev instances.
+#
+# Requires veth bridge — see README SiL setup section.
+settings:
+  telemetry_enabled: true
+active_modules:
+
+  # ----------------------------------------------------------------------------
+  # JANUS orchestration stand-in
+  # ----------------------------------------------------------------------------
+  # NOTE: VirtualV2GKey's manifest has NO `requires:` block — it connects to
+  # nothing. It only PUBLISHES telemetry (current_mode, cp_state B1->E->B1,
+  # switch_in_progress/complete). It does NOT drive either EvseManager's BSP.
+  # So a set_power_path() call emits switch telemetry but does not physically
+  # reroute the contexts. This is the "smallest stand-in" available today; a
+  # real handover needs VirtualV2GKey to PROVIDE board_support to both contexts.
+  # One VirtualV2GKey per context so a set_power_path targets exactly one bridge
+  # (fixes the phantom cross-injection observed when a single instance drove both).
+  ac_v2g_key:
+    module: VirtualV2GKey
+  dc_v2g_key:
+    module: VirtualV2GKey
+
+  # BSP interposers: sit between each EvseManager and its Yeti; forward everything,
+  # but let its own VirtualV2GKey override the CP `event` feed during a switch.
+  ac_bridge:
+    module: V2GKeyBspBridge
+    connections:
+      bsp_downstream:
+        - module_id: ac_yeti
+          implementation_id: board_support
+      v2g_key:
+        - module_id: ac_v2g_key
+          implementation_id: v2g_key
+  dc_bridge:
+    module: V2GKeyBspBridge
+    connections:
+      bsp_downstream:
+        - module_id: dc_yeti
+          implementation_id: board_support
+      v2g_key:
+        - module_id: dc_v2g_key
+          implementation_id: v2g_key
+
+  # ============================================================================
+  # AC CONTEXT (ISO 15118-2 / DIN, via EvseV2G) — from config-sil-v2gkey.yaml
+  # ============================================================================
+  ac_evse_manager:
+    module: EvseManager
+    config_module:
+      ac_enforce_hlc: false
+      ac_hlc_enabled: true
+      ac_hlc_use_5percent: false
+      ac_nominal_voltage: 230
+      charge_mode: AC
+      connector_id: 1
+      ev_receipt_required: false
+      evse_id: DE*PNX*E12345*1
+      has_ventilation: true
+      max_current_import_A: 32
+      max_current_export_A: 32
+      payment_enable_contract: true
+      payment_enable_eim: true
+      session_logging: true
+      session_logging_path: /tmp/everest-logs
+      session_logging_xml: false
+    connections:
+      bsp:
+        - module_id: ac_bridge
+          implementation_id: board_support
+      hlc:
+        - module_id: ac_hlc
+          implementation_id: charger
+      powermeter_grid_side:
+        - module_id: ac_yeti
+          implementation_id: powermeter
+      slac:
+        - module_id: ac_slac
+          implementation_id: evse
+      ac_rcd:
+        - module_id: ac_yeti
+          implementation_id: rcd
+      connector_lock:
+        - module_id: ac_yeti
+          implementation_id: connector_lock
+    telemetry:
+      id: 1
+  ac_hlc:
+    module: EvseV2G
+    config_module:
+      device: veth-ac-secc
+      tls_security: allow
+      supported_DIN70121: false
+    connections:
+      security:
+        - module_id: evse_security
+          implementation_id: main
+  ac_car:
+    module: PyEvJosev
+    config_module:
+      device: veth-ac-car
+      supported_ISO15118_2: true
+    connections: {}
+  ac_yeti:
+    module: YetiSimulator
+    config_module:
+      connector_id: 1
+    connections: {}
+    telemetry:
+      id: 1
+  ac_slac:
+    module: SlacSimulator
+  ac_ev_manager:
+    module: EvManager
+    config_module:
+      auto_enable: true
+      auto_exec: false
+      # AC session: plug, HLC, draw AC power, hold ~40s (JANUS switch window)
+      auto_exec_commands: sleep 2;iec_wait_pwr_ready;sleep 1;draw_power_regulated 16,3;sleep 40;unplug
+      connector_id: 1
+    connections:
+      ev:
+        - module_id: ac_car
+          implementation_id: ev
+      ev_board_support:
+        - module_id: ac_yeti
+          implementation_id: ev_board_support
+      slac:
+        - module_id: ac_slac
+          implementation_id: ev
+
+  # ============================================================================
+  # DC-BPT CONTEXT (ISO 15118-20 DC BPT, via Evse15118D20) — from config-sil-dc-d20.yaml
+  # ============================================================================
+  dc_evse_manager:
+    module: EvseManager
+    config_module:
+      connector_id: 2
+      evse_id: DE*PNX*E12345*2
+      evse_id_din: 49A80737A45678
+      session_logging: true
+      session_logging_xml: false
+      session_logging_path: /tmp/everest-logs
+      charge_mode: DC
+      payment_enable_contract: false
+      bpt_channel: Unified
+      bpt_generator_mode: GridFollowing
+    connections:
+      bsp:
+        - module_id: dc_bridge
+          implementation_id: board_support
+      powermeter_car_side:
+        - module_id: dc_powersupply
+          implementation_id: powermeter
+      slac:
+        - module_id: dc_slac
+          implementation_id: evse
+      hlc:
+        - module_id: dc_hlc
+          implementation_id: charger
+      powersupply_DC:
+        - module_id: dc_powersupply
+          implementation_id: main
+      imd:
+        - module_id: dc_imd
+          implementation_id: main
+    telemetry:
+      id: 2
+  dc_hlc:
+    module: Evse15118D20
+    config_module:
+      device: veth-dc-secc
+    connections:
+      security:
+        - module_id: evse_security
+          implementation_id: main
+  dc_car:
+    module: PyEvJosev
+    config_module:
+      device: veth-dc-car
+      supported_DIN70121: false
+      supported_ISO15118_2: false
+      supported_ISO15118_20_DC: true
+      tls_active: true
+      enable_tls_1_3: true
+    connections: {}
+  dc_yeti:
+    module: YetiSimulator
+    config_module:
+      connector_id: 2
+    telemetry:
+      id: 2
+  dc_powersupply:
+    module: DCSupplySimulator
+  dc_imd:
+    module: IMDSimulator
+    config_implementation:
+      main:
+        selftest_success: true
+  dc_slac:
+    module: SlacSimulator
+  dc_ev_manager:
+    module: EvManager
+    config_module:
+      connector_id: 2
+      auto_enable: true
+      auto_exec: false
+      # DC-BPT session (fired AFTER the switch, by JANUS/manual trigger)
+      auto_exec_commands: sleep 3;iso_wait_slac_matched;iso_start_v2g_session DC;iso_wait_pwr_ready;iso_dc_power_on;iso_wait_for_stop 15;iso_wait_v2g_session_stopped;unplug;
+      dc_target_current: 20
+      dc_target_voltage: 400
+    connections:
+      ev_board_support:
+        - module_id: dc_yeti
+          implementation_id: ev_board_support
+      ev:
+        - module_id: dc_car
+          implementation_id: ev
+      slac:
+        - module_id: dc_slac
+          implementation_id: ev
+
+  # ============================================================================
+  # SHARED SINGLETONS
+  # ============================================================================
+  evse_security:
+    module: EvseSecurity
+    config_module:
+      private_key_password: "123456"
+
+  auth:
+    module: Auth
+    config_module:
+      connection_timeout: 10
+      selection_algorithm: FindFirst
+      prioritize_authorization_over_stopping_transaction: true
+      ignore_connector_faults: true
+    connections:
+      token_provider:
+        - module_id: ac_token_provider
+          implementation_id: main
+        - module_id: dc_token_provider
+          implementation_id: main
+      token_validator:
+        - module_id: token_validator
+          implementation_id: main
+      evse_manager:
+        - module_id: ac_evse_manager
+          implementation_id: evse
+        - module_id: dc_evse_manager
+          implementation_id: evse
+  ac_token_provider:
+    module: DummyTokenProvider
+    config_implementation:
+      main:
+        token: DEADBEEF
+    connections:
+      evse:
+        - module_id: ac_evse_manager
+          implementation_id: evse
+  dc_token_provider:
+    module: DummyTokenProvider
+    config_implementation:
+      main:
+        token: TOKEN1
+    connections:
+      evse:
+        - module_id: dc_evse_manager
+          implementation_id: evse
+  token_validator:
+    module: DummyTokenValidator
+    config_implementation:
+      main:
+        validation_result: Accepted
+        validation_reason: Token seems valid
+        sleep: 0.25
+
+  # --- energy tree: one manager, one grid node fanning to both contexts -------
+  energy_manager:
+    module: EnergyManager
+    config_module:
+      schedule_total_duration: 1
+      schedule_interval_duration: 60
+      debug: false
+    connections:
+      energy_trunk:
+        - module_id: grid_connection_point
+          implementation_id: energy_grid
+  grid_connection_point:
+    module: EnergyNode
+    config_module:
+      fuse_limit_A: 40.0
+      phase_count: 3
+    connections:
+      price_information: []
+      energy_consumer:
+        - module_id: ac_evse_manager
+          implementation_id: energy_grid
+        - module_id: dc_evse_manager
+          implementation_id: energy_grid
+      powermeter:
+        - module_id: ac_yeti
+          implementation_id: powermeter
+
+  # --- APIs / persistence -----------------------------------------------------
+  api:
+    module: API
+    connections:
+      evse_manager:
+        - module_id: ac_evse_manager
+          implementation_id: evse
+        - module_id: dc_evse_manager
+          implementation_id: evse
+      error_history:
+        - module_id: error_history
+          implementation_id: error_history
+  ev_api:
+    module: EvAPI
+    connections:
+      ev_manager:
+        - module_id: ac_ev_manager
+          implementation_id: ev_manager
+        - module_id: dc_ev_manager
+          implementation_id: ev_manager
+  error_history:
+    module: ErrorHistory
+    config_implementation:
+      error_history:
+        database_path: /tmp/error_history.db
+  persistent_store:
+    module: PersistentStore
+    config_module:
+      sqlite_db_file_path: everest_persistent_store.db
+    connections: {}
+
+x-module-layout: {}

@@ -1,0 +1,52 @@
+# JANUS orchestrator — input-layer configuration.
+# All times are NEM time (AEST, UTC+10, no DST). All prices in $/MWh.
+
+region: NSW1
+cycle_minutes: 5                  # decision cycle; get_snapshot(t) requires t on this grid
+
+data:
+  dir_env: JANUS_AEMO_DATA_DIR    # overrides default_dir when set
+  default_dir: ~/everest-workspace/data/aemo
+  pd_glob: "PUBLIC_ARCHIVE#PREDISPATCHPRICE#*.CSV"
+  p5min_glob: "PUBLIC_ARCHIVE#P5MIN_REGIONSOLUTION#*.CSV"   # stub: no files yet
+  dispatch_glob: "PUBLIC_ARCHIVE#DISPATCHPRICE#*.CSV"       # stub: no files yet
+
+horizon:
+  p5min_window_minutes: 60        # P5MIN for targets within t+60 min, PD after
+
+staleness:                        # age = t - LASTCHANGED of the latest available run
+  p5min_max_age_minutes: 10       # older -> use PD for the near-term horizon
+  pd_max_age_minutes: 45          # older -> keep using it, flag pd_stale
+  safe_mode_max_age_minutes: 60   # ALL price data older -> flag safe_mode
+
+validation:
+  price_floor: -1000.0            # NEM market floor price
+  price_cap: 20300.0              # NEM market price cap, FY2025-26
+  soc_min: 0.0
+  soc_max: 100.0
+
+soc:
+  direct_tolerance_pct: 1.0       # DC reading -> [reading - tol, reading + tol]
+  user_entry_tolerance_pct: 5.0   # user-entered SoC -> [soc - tol, soc + tol]
+  ac_charge_efficiency: 0.90      # metered kWh -> battery kWh (~10% AC charging loss)
+  ac_uncertainty_fraction: 0.10   # half-width grows by this fraction of |energy| moved, in %SoC
+  uncertain_width_pct: 10.0       # flag soc_uncertain when upper - lower exceeds this
+
+user:                             # defaults; override per run
+  departure_time: "18:00"         # "HH:MM" (next occurrence after replay start) or ISO datetime
+  target_soc: 80.0
+  min_soc: 20.0
+  battery_capacity_kwh: 60.0
+  preset: B                       # A / B / C
+  user_soc: null                  # SoC typed in by the user at plug-in, if any
+
+replay:
+  start: "2026-01-01T04:05"       # first PD run in the Jan file is 04:02:30
+  end: "2026-01-02T04:00"
+
+error_distributions:              # built by: python -m orchestrator.inputs.error_dist
+  path: data/error_distributions.json   # relative to orchestrator/
+  min_count: 100                  # thinner groups fall back to the lead bin's all-price group
+  train_window:                   # only pairs whose 30-min TARGET interval ends in (start, end]
+    start: "2026-01-01T00:00"     # = January 2026, the in-sample month; February is held out (E7)
+    end: "2026-02-01T00:00"

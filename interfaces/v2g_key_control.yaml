@@ -1,0 +1,63 @@
+description: >-
+  Control interface for the V2G-Key hardware interposer simulation.
+  Exposes mode-level power-path switching between AC (wallbox) and DC_BPT
+  (PV inverter) and Control Pilot visibility. Pilot/PLC signalling is
+  internal to the hardware; only top-level mode commands are accessible here.
+cmds:
+  set_power_path:
+    description: >-
+      Initiate a transition to the target power path mode. Internally
+      executes the four-step IEC 61851 transition sequence. Returns false
+      if already in the requested mode or a transition is in progress.
+    arguments:
+      mode:
+        description: Target power path mode
+        type: string
+        enum:
+          - AC
+          - DC_BPT
+    result:
+      type: boolean
+      description: True if transition was accepted; false otherwise
+  get_status:
+    description: Returns a snapshot of the current V2G-Key hardware state
+    result:
+      type: object
+      description: Snapshot of the current V2G-Key hardware state
+      $ref: /v2g_key#/V2GKeyStatus
+vars:
+  switch_in_progress:
+    description: Published when a power-path transition is initiated
+    type: object
+    $ref: /v2g_key#/SwitchEvent
+  switch_complete:
+    description: Published when a power-path transition finishes
+    type: object
+    $ref: /v2g_key#/SwitchEvent
+  fault:
+    description: Published when the hardware reports a fault condition
+    type: string
+  current_mode:
+    description: Current active power path mode; updated at end of each successful transition
+    type: string
+    enum:
+      - AC
+      - DC_BPT
+  cp_state:
+    description: >-
+      IEC 61851-1 Control Pilot state as currently seen by the vehicle.
+      Transitions through B1/B2/C during normal operation and briefly
+      through E (~500 ms) during CP source switching.
+    type: string
+    enum:
+      - A
+      - B1
+      - B2
+      - C
+      - E
+  pp_present:
+    description: >-
+      Proximity Pilot presence indicator. Remains true throughout all
+      transitions — the vehicle never perceives a physical unplug.
+      Becomes false only on hardware fault.
+    type: boolean

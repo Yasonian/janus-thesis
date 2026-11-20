@@ -1,0 +1,36 @@
+description: >-
+  SIL simulation of the P-ONE V2G-Key hardware interposer. Models the
+  power-path switching layer BENEATH the EVerest protocol stack: physical
+  switching between AC (wallbox) and DC_BPT (PV inverter) sources and
+  Control Pilot (CP) manipulation per IEC 61851-1. Does NOT implement
+  SLAC, ISO 15118 protocol logic, or any digital-twin behaviour.
+config:
+  physical_switch_ms:
+    description: >-
+      Duration of the physical CP source switch (Step 3) in milliseconds.
+      Vendor-confirmed hardware switching time is <100 ms.
+    type: integer
+    default: 100
+  state_e_duration_ms:
+    description: >-
+      Duration of the transient IEC 61851 State E (~0 V CP) that the
+      vehicle observes during CP source switching, in milliseconds.
+    type: integer
+    default: 500
+  hlc_teardown_simulation_ms:
+    description: >-
+      Simulated time in milliseconds for Step 1 (HLC session teardown).
+      In real hardware this is driven by ISO 15118 SessionStop exchange;
+      the simulation uses a fixed delay as a placeholder.
+    type: integer
+    default: 200
+provides:
+  v2g_key:
+    interface: v2g_key_control
+    description: >-
+      V2G-Key power-path and CP control interface. Connect this to JANUS
+      (session orchestration) for autonomous mid-session AC/DC switching.
+metadata:
+  license: https://opensource.org/licenses/Apache-2.0
+  authors:
+    - Thesis author (VirtualV2GKey — P-ONE V2G-Key simulation)

@@ -14,3 +14,25 @@ __pycache__/
 *.orig
 *.rej
 docs/source/conf.py
+
+# Per-run timestamped config dumps written to the repo root by `manager`
+# (YYMMDD_HH-MM-SS.yaml). One per run, so a 20-run batch leaves 20 behind.
+/2[0-9][0-9][0-9][0-9][0-9]_[0-9][0-9]-[0-9][0-9]-[0-9][0-9].yaml
+
+# local junk / runtime state
+.DS_Store
+everest_persistent_store.db
+
+# JANUS orchestrator: AEMO data, venv, build artefacts
+/data/
+/*.CSV
+orchestrator/.venv/
+*.egg-info/
+.pytest_cache/
+
+# JANUS generated outputs (rebuilt by the commands in orchestrator/README.md)
+orchestrator/data/
+orchestrator/experiments/
+orchestrator/live_logs/
+orchestrator/scenarios/results/
+orchestrator/scenarios/*.png

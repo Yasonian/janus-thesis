@@ -1,0 +1,24 @@
+description: >-
+  SiL bridge that sits between a real evse_board_support provider (YetiSimulator)
+  and an EvseManager, forwarding all commands/vars transparently EXCEPT that,
+  during a VirtualV2GKey power-path switch, it OVERRIDES the upstream CP-state
+  `event` feed with BspEvents derived from v2g_key_control.cp_state. This lets
+  VirtualV2GKey (JANUS) actually drive the manager's IEC state machine without
+  patching EVerest core. Pure test glue; models no real hardware.
+provides:
+  board_support:
+    interface: evse_board_support
+    description: evse_board_support presented to the EvseManager (CP feed may be overridden during a switch)
+requires:
+  bsp_downstream:
+    interface: evse_board_support
+    min_connections: 1
+    max_connections: 1
+  v2g_key:
+    interface: v2g_key_control
+    min_connections: 1
+    max_connections: 1
+metadata:
+  license: https://opensource.org/licenses/Apache-2.0
+  authors:
+    - Thesis author (V2GKeyBspBridge — JANUS BSP interposer)
